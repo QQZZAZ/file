@@ -1,0 +1,49 @@
+Decommission Datanode
+原文链接：https://blog.csdn.net/jewes/article/details/40090779
+Decommission Datanode就是把Datanode从HDFS集群中移除掉。那问题来了，HDFS在设计时就把诸如机器故障考虑进去了，能否直接把某台运行Datanode的机器关掉然后拔走呢？我认为理论上可行的，不过在实际的集群中，如果某份数据只有一份拷贝而且它就在这个机器上，那么直接关掉并拔走机器就会造成数据丢失。本文将介绍如何Decommission Datanode以及可能会遇到的一些问题及其解决办法。
+
+Decommission Datanode都做了什么？
+Datanode是存储实际数据的，因此在Decommission Datanode的时候需要把Datanode上的数据迁移到别的机器上。这就好比公司里面有人离职了，他需要把他负责的工作交接给别的同事。
+
+那如何Decommission Datanode呢？这需要如下两个步骤：
+
+在Namenode上，把需要Decommission的Datanode的机器名加入到dfs.hosts.exclude(该配置项在hdfs-site.xml)所指定文件中，也就是告诉Namenode哪些Datanode要被Decommission。
+如果hdfs-site.xml没有找到dfs.hosts.exclude，那么就手动把下面内容加入到hdfs-site.xml中，然后把需要Decommission的机器写到文件/etc/hadoop/conf/dfs.exclude中去。
+
+<property>    
+<name>dfs.hosts.exclude</name>
+<value>/etc/hadoop/conf/dfs.exclude</value>
+</property>
+2 . 用如下命令启动Decommission：
+
+sudo -u hdfs hdfs dfsadmin -refreshNodes
+注意：通常需要用hdfs用户来执行这个命令。 
+接下来就可以在Namenode的UI(http://<namenode_fqdn>:50070)上看到对应Datanode会处在Decommissioning状态。完成后，对应的Datanode会处在Decommissioned状态。
+
+常见问题
+我们知道HDFS上的文件默认replica factor是3，也就是文件要存储3份。Decommission Datanode的时候需要保证在该Datanode移除以后，HDFS上的文件还能满足replica factor的最低要求。
+
+比如，一个只有3个Datanode的HDFS集群，文件默认replica factor是3，那么移除任何一个Datanode都会导致某些文件不能满足replica factor的最低要求。当试图移除一个Datanode的时候，会一直处在Decommissioning的状态，因为它找不到别的机器来迁移它的数据了。这个问题通常容易出现在小集群上。
+
+一个解决办法就是临时把相应文件的replica factor调低。 
+1. 用如下命令来查看HDFS中所有文件的replica factor
+
+sudo -u hdfs hdfs fsck / -files -blocks
+比如在我的测试集群上，一部分输出如下：
+
+/user/oozie/share/lib/sqoop/sqoop-1.4.4.phd.3.0.0.0-1.jar 756504 bytes, 1 block(s):  OK
+0. BP-1770424924-192.168.64.102-1412922647084:blk_1073741898_1074 len=756504 repl=1
+其中repl=1表示该文件的该block的replica factor为1。通过这个命令就可以找到那些replica factor比较高的文件了。
+
+2 . 调整文件的replica factor 
+我们需要注意的是，replica factor是文件的属性，而不是集群的属性，也就是说同一个集群中的文件可以有不同的replica factor。因此，我们需要针对文件修改replica factor。对应的命令是：
+
+hdfs dfs -setrep [-R] [-w] <rep> <path>
+其中
+
+-R表示recursive，可以对一个目录及其子目录设置replica factor，
+表示需要设置的replica factor的值
+表示需要设置的replica factor的文件或目录路径
+小结
+Decommission Datanode就有点类似于在拔掉移动硬盘的时候先将其弹出。本文简要介绍了如何Decommission Datanode和一个常见问题及其解决办法。
+

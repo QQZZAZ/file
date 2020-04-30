@@ -1,0 +1,1 @@
+hdfs的namenode和yarn的RM要分开，因为着2个都消耗极大的内存

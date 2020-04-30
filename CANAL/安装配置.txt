@@ -1,0 +1,40 @@
+4、 Canal搭建环境
+1、准备好 MySQL运行环境
+2、开启 MySQL的 binlog写入功能，
+配置 binlog- format为RoW模式my cnf中配置如下：
+【mysqld】
+log-bin=mysq1-bin#
+开启 binlog binlog- format=ROW#选择Row模式
+server id=1#配置 MySQL replaction需要定义，不要和 canal的 SlaveId重复
+
+3、授权cana连接 MySQL账号具有作为 MySQL slave的权限
+如果已有账户可直接 grant授权启动 
+MySQL服务器登录msq1：
+./ mysql -uroot -p -h127.0.0.1 -P3306
+CREATE USER canal IDENTIFIED BY 'canal';  #创建canal用户和密码canal
+GRANT SELECT,REPLICATION SLAVE, REPLICATION CLIENT ON *.* To 'canal'@'%';
+FLUSH PRIVILEGES;
+
+4.#canal解压时不会创建目录，需要先创建一个目录/
+tar -zxvf canaL.deployer-1.1.4.tar.gz -C/usr/local/canaL.deployer.1.4/
+
+5、配置修改vi conf/example/instance.properties主要是修改配置文件中与自己的数据库配置相关的信息；
+canal.instance.master.address=127.0.0.1.3306#连接本地的mysql，如果连接别的机器的mysl，可以改ip
+
+6、启动Can
+./startup. sh
+7、查看进程：
+ps -ef grep canal
+8、查看 server日志cat logs/canal/canal.log
+
+9、查看 Instance的日志i logs/example/example.log
+10、关闭 Canal
+./stop.sh canal server的默认端口号为：11111，如果需要调整的话，可以去到/conf目录底下的 canal.properties文件中进行修改
+
+相关命令
+#是否启用了日志show variables like 'log_bin'
+#怎样知道当前的日志show master status
+#查看mysq1bin1og模式show variables like 'binlog_format；
+#获取bin1og文件列表show binary logs
+#查看当前正在写入的bin1og文件show master status\G
+#查看指定bin1og文件的内容show binlog events in mysql-bin.000002

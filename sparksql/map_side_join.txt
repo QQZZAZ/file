@@ -1,0 +1,1 @@
+spark.sql.autoBroadcastJoinThreshold参数默认值是10M，所以只有cache的表小于10M的才被广播到Executor上去执行map side join

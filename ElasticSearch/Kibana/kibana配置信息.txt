@@ -1,0 +1,10 @@
+Kiana4配置文件讲解kiana.ymL 
+port：定义访问端口，默认5601。
+Host：定义 kiana服务|P。
+elasticsearch_url：定义es服务地址，填写 master节点地址即可。
+elasticsearch_ preserve_host：默认，浏览器请求中的主机名即作为Kiana发送给 Elasticsearch时请求的主机名。这里设置为true即可。
+kiana_ index：默认的， kiana连接了es服务后，也会创建一个索引来保存相关信息，默认名字为.kiana 
+default_app_id：设置默认打开的界面是什么，有 discover, visualize, dashboard和 settings选择，默认k discover。
+request_timeout：等待 Kiana后端或 Elasticsearch的响应的超时时间，单位毫秒；默认30000毫秒
+shard-timeout:Elasticsearch等待分片响应的超时时间；默认是0；O就是 disable关闭
+verify_ss：定义是否验证 Elasticsearch SSL证书； false就是关闭；默认true开启。

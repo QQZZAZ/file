@@ -1,0 +1,213 @@
+Spark 生成HFile过程详解
+原创yulin_H 最后发布于2018-09-02 11:23:31 阅读数 1810  收藏
+展开
+Spark 生成HFile过程详解
+前言
+直接生成hfile的目的是跨过使用hbase客户端，减小客户端，服务器压力。面对每天要往hbase写大量数据的情况的时候非常有优势。
+
+因为 hfile的生成这一步 可以完全不跟HBase打交道，不像使用put请求，我们要不断地向hbase服务器发送RPC请求，然后需经过WAL预写，再刷新。
+
+这不仅会造成写入速度慢，也会增加hbase的压力，从而对客户的读请求造成压力
+
+当生成hfile文件之后，我们再把hfile load进hbase中。这一步是非常快的。
+
+本文将会描述HFile生成这一过程，对涉及到的相关知识点也会做简要阐述。
+
+生成hfile流程
+Spark有直接保存textFile，Parquet，sequenceFile等方法。但是hfile是一个特定格式的输出，我们调用RDD.saveAsNewAPIHadoopFile方法。同时我们需要指定outPutFormat。
+
+outPutFormat是一个对map_reduce job输出格式的描述，主要是三个方法：
+
+checkOutputSpecs:用于job验证指定的输出（例如保证job输出前文件路径不存在）
+getRecordWriter：得到writer。
+getOutputCommiter：根据任务成功完成的状态来提交任务的状态（如成功），并且可以有些逻辑操作
+关键的应是getWriter这个方法了，他返回一个RecordWriter的类，这个类可以自己去实现。当然这个writer是针对K V类型，也就是说这个writer写的是一个键值对（mapreduce是需要指定KV的）。这个writer有两个方法需要实现：
+
+write写一个键值对。我们可以往文件里面写。也可以往mySQL,HBASE里面写，完全由自己控制。
+close方法：处理完键值对时调用（例如可以释放文件句柄，连接等等）
+这里我们采用HBase提供的HFileOutputFormat。
+
+key=ImmutableBytesWritable 一个byte的序列。 
+value=KeyValue 
+getWriter返回的是
+
+ public RecordWriter<ImmutableBytesWritable, KeyValue> getRecordWriter(
+  final TaskAttemptContext context) throws IOException, InterruptedException {
+  return HFileOutputFormat2.createRecordWriter(context);
+}
+
+其实用的也是HFileOutputFormat2的writer，HFileOutputFormat已经不推荐使用了。 
+在HFileOutputFormat2.createRecordWriter方法中：
+
+// 维护了一个  map  key是列族，value是WriterLength  有两个属性 long written ；StoreFile.Writer
+//  就是说每一个列族都会有一个writer
+ private final Map<byte [], WriterLength> writers =
+    new TreeMap<byte [], WriterLength>(Bytes.BYTES_COMPARATOR
+
+//每一个KeyValue都会包含列族  列 值 等信息
+
+    byte [] rowKey = CellUtil.cloneRow(kv);
+    long length = kv.getLength();
+    byte [] family = CellUtil.cloneFamily(kv);
+    WriterLength wl = this.writers.get(family);
+
+     if (wl == null) {
+      fs.mkdirs(new Path(outputdir, Bytes.toString(family)));
+    }
+    // 可以发现  每一个列族对应的writer 都对应了一个文件目录
+    // 这也符合我们的理解  因为不同列族对应不同的Store 存在不同的目录下  同时在bulkLoad的时候，我们也会说到多列族的问题  
+    // 在这里也可以看出  要同时生成多列族的hfile是可行的
+
+      kv.updateLatestStamp(this.now);  // 每一个KeyValue 会在这里附带一个timeStamp
+
+
+     // 接下来再来看：  hbase在建表的时候  会指定压缩 和  布隆过滤器
+     //  比如：
+     //create 'table', { NAME => '0', DATA_BLOCK_ENCODING => 'PREFIX', BLOOMFILTER => 'ROWCOL', COMPRESSION => 'SNAPPY'}, {NUMREGIONS => 1000, SPLITALGO => 'HexStringSplit'}
+
+     //  我们还需要考虑  使用这种hfile的方式  是不是 也能保持上面的格式
+
+        // HFileOutputFormat维护了三个map  如下
+        final Map<byte[], Algorithm> compressionMap = createFamilyCompressionMap(conf);
+        final Map<byte[], BloomType> bloomTypeMap = createFamilyBloomTypeMap(conf);
+        final Map<byte[], Integer> blockSizeMap = createFamilyBlockSizeMap(conf);
+
+     // 这些都是从conf中去获取 压缩算法  布隆过滤器类型  
+
+     // 这个conf  是在getWriter方法传入的一个 TaskAttemptContext context
+
+     这个conf是可以传的  如果不传的话  默认是取 self.context.hadoopConfiguration
+     我们也是可以传conf进去的
+     conf里面是一个map：map的key是属性名，例如压缩算法，value是一个字符串，字符串的内容应该是：列族名=值&列族名=值......
+     解析的代码是这样的：
+      Map<byte[], String> confValMap = new TreeMap<byte[], String>(Bytes.BYTES_COMPARATOR);
+        String confVal = conf.get(confName, "");
+        for (String familyConf : confVal.split("&")) {
+        String[] familySplit = familyConf.split("=");
+        if (familySplit.length != 2) {
+            continue;
+        }
+        try {
+            confValMap.put(URLDecoder.decode(familySplit[0], "UTF-8").getBytes(),
+                URLDecoder.decode(familySplit[1], "UTF-8"));
+        } catch (UnsupportedEncodingException e) {
+            // will not happen with UTF-8 encoding
+            throw new AssertionError(e);
+        }
+        }
+        return confValMap;
+
+     //  所以我们可以通过以上的方式进行赋值 
+     // 或者我们可以显示调用  HFileOutPutFormat.configureIncrementalLoad 方法
+     // HFileOutputFormat.configureIncrementalLoad(job,hTable)  
+     // 这个方法会根据table去获取布隆过滤器，压缩算法等等
+     // 并将其添加到conf里面
+     // 添加方式  和  上面提到的 方式一样  列族名=值&列族名=值
+    //  configureIncrementalLoad这个方法会更新job的Configuration 所以我们需要把这个job的con传入，如下：
+    saveAsNewAPIHadoopFile(outputPath.toString, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat], job.getConfiguration)
+
+至此，我们完全阐述了HFileOutPutFormat
+
+saveAsNewAPIHadoopFile
+
+在上文已经阐述了调用saveAsNewAPIHadoopFile方法，并传入HFileOutputFormat，会生成我们指定格式的文件。而这个方法是一个mapReduce任务，严格来说它是一个没有reduce的map任务。在写MapReduce任务的时候，我们需要给一个InputFormat。这个InputFormat其实和上文讲的OutputFormat的功能相似。它描述的是任务输入的格式。
+
+在InputFormat方法中，关键两个方法：getSplits和createRecordReader。
+
+getSplits方法是对数据进行拆分，返回的是List，这里将InputSplit称之为一个分片，它包含当前分片的位置和长度。而一个InputSplit将会将给一个map任务进行处理。
+createRecordReader则是读一个给定的分片。
+一个分片的任务交给一个map任务，传统的一个map任务一个输出（这也完全取决于map任务的outPutFormat,例如上面我们提到的HFileOutputFormat,也可参考https://blog.csdn.net/searcher_recommeder/article/details/53035788一个map输出多个文件）.
+
+但是对于saveAsNewAPIHadoopFile这给方法，他不需要指定inputFormat,为什么呢？这里我认为是调用这个方法的是一个RDD，这里一个RDD的partition将会作为一个map任务的输入。
+
+分区器
+
+在(2)中提到了，saveAsNewAPIHadoopFile方法，一个partition可以理解为一个map的输入，同时，我们传入的是HFileOutputFormat,在（1）中我们提到了HFileOutputFormt的write是列族不同则会有不同的writer，对应不同的输出。
+
+那么也就是 一个partition的数据，将会有多少个列族，就会有多少个文件。
+
+那么这就对分区有要求了。
+
+我们知道，hbase建表的时候，是有预分区的。rowkey在一个给的区间里的数据将会在一个region里面。一个region对应多个HStore（一个列族一个HStore），每个HStore下有多个hfile文件（这也可以理解HFileOutputFormt中为什么一个列族的数据要写到一个目录下了）。
+
+基于这个原因，如果我们的RDD的partition中的rowkey是乱的，也就是说本应该在一个region的数据却分散在了不同的partition里面，最终导致生成的一个hfile文件却要属于不同的region。
+
+这也不是说不可以，但是这会增加bulk load时的计算压力（后面会阐述bulk load的原理）。bulk load的时候需要保证一个hfile文件只属于一个region，否则就要进行拆分。
+
+所以为了减小bulk load时的压力（因为load的时候，就需要调用habse了）我们在save之前就对RDD进行分区，使得属于同一个region的数据在一个partition里面。以下这种方式一般只对具有预分区的表有效。
+
+// 要保证处于同一个region的数据在同一个partition里面，那么首先我们需要得到table的startkeys
+// 再根据startKey建立一个分区器
+// 分区器有两个关键的方法需要去实现
+// 1. numPartitions 多少个分区
+// 2. getPartition给一个key，返回其应该在的分区  分区器如下：
+
+private class HFilePartitioner(conf: Configuration, splits: Array[Array[Byte]], numFilesPerRegion: Int) extends Partitioner {
+val fraction = 1 max numFilesPerRegion min 128
+
+override def getPartition(key: Any): Int = {
+  def bytes(n: Any) = n match {
+    case s: String => Bytes.toBytes(s)
+    case s: Long => Bytes.toBytes(s)
+    case s:Int=>Bytes.toBytes(s)
+  }
+
+  val h = (key.hashCode() & Int.MaxValue) % fraction
+  for (i <- 1 until splits.length)
+    if (Bytes.compareTo(bytes(key), splits(i)) < 0) return (i - 1) * fraction + h
+
+  (splits.length - 1) * fraction + h
+}
+
+override def numPartitions: Int = splits.length * fraction
+}
+// 参数splits为table的startKeys
+// 参数numFilesPerRegion为一个region想要生成多少个hfile，便于理解  先将其设置为1 即一个region生成一个hfile
+// h可以理解为它在这个region中的第几个hfile（当需要一个region有多个hfile的时候）
+// 因为startKeys是递增的，所以找到第一个大于key的region，那么其上一个region，这是这个key所在的region
+进行分区
+
+利用所写的分区器进行分区。
+
+根据上面的分区器，我们可以实现位于同一个region的数据都划分到一起。但是还有一个问题。hfile中的数据都是有序的（参见 hfile解析）。排序方式应该是：rowkey，列族，列名。
+
+这里我们使用一个算子repartitionAndSortWithinPartitions。他会按照给定的分区器进行分区，并且在一个分区内数据是按key有序的。同时我们应该还需要一个比较器，如下：
+
+implicit val bytesOrdering = new Ordering[Int] {
+  override def compare(a: Int, b: Int) = {
+    val ord = Bytes.compareTo(Bytes.toBytes(a), Bytes.toBytes(b))
+    // if (ord == 0) throw KeyDuplicatedException(a.toString)
+    ord
+  }
+} // 是按bytes比较
+
+// 模拟一个rdd生成  map是列名和列值  还没有指定列族
+  val rdd=sc.parallelize((1 to 500).map(rowkey=>{
+  rowkey->Map("column1"->(rowkey.toString+"column"),"column2"->(rowkey+"column2"))
+}),50)
+
+ rdd.repartitionAndSortWithinPartitions(new HFilePartitioner(hbaseconf, hTable.getStartKeys, 1)
+
+ // 但是这里是按照在一个partition里面按照key，也就是数据的rowkey进行了排序。如果我们一个rowkey有多列，或是有多个列族，还需要进行如下操作。
+
+ rdd.repartitionAndSortWithinPartitions(new HFilePartitioner(hbaseconf, hTable.getStartKeys, 1))
+  .flatMap{
+    case (key,columns)=>
+      val rowkey= new ImmutableBytesWritable()
+      rowkey.set( Bytes.toBytes(key)) //设置rowkey
+      val kvs = new TreeSet[KeyValue](KeyValue.COMPARATOR)
+      columns.foreach(ele=>{
+        val (column,value)=ele  // 每一条数据两个列族  对应map里面的两列
+        kvs.add(new KeyValue(rowkey.get(),Bytes.toBytes("family1"),Bytes.toBytes(column), Bytes.toBytes(value)))
+        kvs.add(new KeyValue(rowkey.get(),Bytes.toBytes("family2"),Bytes.toBytes(column), Bytes.toBytes(value)))
+      })
+      kvs.toSeq.map(kv => (rowkey, kv))
+  }.saveAsNewAPIHadoopFile(outPut, classOf[ImmutableBytesWritable], classOf[KeyValue], classOf[HFileOutputFormat])
+
+  //在上述我们TreeSet[KeyValue](KeyValue.COMPARATOR)再次进行排序
+  // 现在每一个分区是严格有序的了
+
+以上的代码会生成两个目录：family1，family2.
+
+bulk load
+bulk load 见 https://blog.csdn.net/yulin_Hu/article/details/82314503

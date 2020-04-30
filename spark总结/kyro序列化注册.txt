@@ -1,0 +1,1 @@
+conf.registerKryoClasses(Array(classOf[Counter] ))

@@ -1,0 +1,13 @@
+3.淘汰与落盘
+对于同一个 Executor的所有的计算任务共享有限的存储内存空间，当有新的Block需要缓存但是剩余空间不足且无法动态占用时，
+就要对 LinkedHashMap中的旧 Block进行淘汰（ Eviction），而被淘汰的Bck如果其存储级别中同时包含存储到磁盘的要求，则要对其进行落盘（Drop），
+否则直接剧除该 Block
+
+存储内存的淘汰规则为：
+被淘汰的旧 Block要与新 Block的 Memory Mode相同，即同属于堆外或堆内内存；
+新旧 Block不能属于同一个RDD，避免循环淘汰；
+旧 Block所属RDD不能处于被读状态，避免引发一致性问题；
+●遍历 LinkedHashMap中 Block，按照最近最少使用（LRU）的顺序淘汰，直到满足新 Block所需的空间。其中LRU是 LinkedHashMap的特性。
+
+落盘的流程则比较简单，如果其存储级别符合 useDisk为true的条件，再根据其 deserialized判断是否是非序列化的形式，若是则对其进行序列化，
+最后将数据存储到磁盘，在 Storage模块中更新其信息。

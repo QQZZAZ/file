@@ -1,0 +1,25 @@
+﻿Arthas 是Alibaba开源的Java诊断工具，深受开发者喜爱。
+启动：java -jar arthas-boot.jar
+
+thread 直接打印所有线程
+thread -h 打印thread 后面接哪些参数，和参数的含义
+thread 线程id 打印指定线程的运行情况
+thread |grep main(条件) 打印匹配到条件的线程 例如配置main，则会打印main线程中启动的线程信息
+thread -b 打印带死锁的线程
+
+sc 跟踪问题class
+sm 跟踪问题class的方法
+trace 类名 方法名 可以打印这个方法从头到尾的执行时间，从而看到这个方法的效率
+
+monitor监控 跟踪方法 可以查看 那些参数被传进去了，哪些参数被返回了
+
+jad 最牛的命令 反编译class成java  查看最新版本的代码，防止部署到服务器的代码被别人覆盖，
+在web服务中很重要，大数据中不重要
+
+redefine最牛的命令 在arthas中无感重写代码，并编译到内存 应急性操作
+1.将想要改的代码改好
+2.javac 将这个类编译成class
+3.连接上jvm
+4.redefine 这个类 
+
+注意：仅支持更改属性值，方法和变量不支持改名或增加变量和方法

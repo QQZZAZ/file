@@ -1,0 +1,17 @@
+开启条件
+Spark 默认开启的是Sort Based Shuffle,想要打开Tungsten-sort ,请设置
+spark.shuffle.manager=tungsten-sort
+对应的实现类是：org.apache.spark.shuffle.unsafe.UnsafeShuffleManager
+
+spark2.0+ 支持手动指定，指定之后还需通过满足指定条件才会触发UnsafeShuffleManager
+当且仅当下面条件都满足时，才会使用新的Shuffle方式：
+
+Shuffle dependency 不能带有aggregation 或者输出需要排序
+Shuffle 的序列化器需要是 KryoSerializer 或者 Spark SQL's 自定义的一些序列化方式.
+Shuffle 文件的数量不能大于 16777216
+序列化时，单条记录不能大于 128 MB
+可以看到，能使用的条件还是挺苛刻的。
+
+
+生产环境需验证：
+设置之后与BypassShuffleWriter的性能谁更好，目前可以测试读表，写文件，不做聚合与排序操作，仅做简单的ETL

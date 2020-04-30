@@ -1,0 +1,32 @@
+1.EXTERNAL 代表hbase中已经存在这个表格
+
+
+CREATE EXTERNAL TABLE wechat_user(key string,wx_wechat_body string,wx_wechat_desc string,wx_wechat_harmful_num int,wx_wechat_id string,wx_wechat_name string,wx_wechat_scraptime timestamp) 
+ROW FORMAT SERDE 'org.apache.hadoop.hive.hbase.HBaseSerDe'
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler' 
+WITH SERDEPROPERTIES ( 'serialization.format'='\t', 'hbase.columns.mapping'=':key,wa:wx_wechat_body,wa:wx_wechat_desc,wa:wx_wechat_harmful_num,wa:wx_wechat_id,wa:wx_wechat_name,wa:wx_wechat_scraptime', 'field.delim'='\t')
+TBLPROPERTIES ('hbase.table.name'='WECHAT_USER_TABLE');
+
+
+
+CREATE EXTERNAL TABLE weibo_info(
+key string,wb_comment_num int,wb_content_has_xj_placename int,
+wb_content_lang string,wb_pubtime timestamp,wb_nickname string,wb_scraptime timestamp,wb_weibo_url string,wb_transfer_num int) 
+ROW FORMAT SERDE 'org.apache.hadoop.hive.hbase.HBaseSerDe'
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler' 
+WITH SERDEPROPERTIES ( 'serialization.format'='\t', 'hbase.columns.mapping'=':key,wa:wb_comment_num,wa:wb_content_has_xj_placename,
+wa:wb_content_lang,wa:wb_pubtime,wa:wb_nickname,wa:wb_scraptime,wa:wb_weibo_url,wa:wb_transfer_num', 'field.delim'='\t')
+TBLPROPERTIES ('hbase.table.name'='WEIBO_INFO_TABLE');
+
+
+CREATE TABLE hbase_hive_2(key int, value string)  
+partitioned by (day string)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.hbase.HBaseSerDe' 
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler' 
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = ":key,cf1:val") 
+TBLPROPERTIES ("hbase.table.name" = "xyz2");
+
+
+2.开启动态分区和非严格模式
+set hive.exec.dynamic.partition=true
+set hive.exec.dynamic.partition.mode=nostrict

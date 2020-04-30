@@ -1,0 +1,147 @@
+1、检查是否安装mysql
+rpm -qa|grep mysql  或者 rpm -qa | grep -i mysql
+2、卸载自带的mysql
+rpm -e --nodeps  xxxx
+3、安装mysql客户端与服务器
+rpm -ivh ./MySQL-client-5.1.73-1.glibc23.x86_64.rpm 
+rpm -ivh MySQL-server-5.1.73-1.glibc23.x86_64.rpm 
+4、检查mysql的状态，没有启动那就起动
+service mysql status
+service mysql start
+5、进入MySQL：mysql -uroot
+create database hive;
+6、设置数据库的root账户密码
+update mysql.user set password=PASSWORD ('root') where User ='root';
+7、打开远程访问连接（等于授权）
+update mysql.user set host='%' where user='root' and host = '127.0.0.1';
+8、刷新授权
+flush privileges;
+
+有时会报错：
+error: 'Access denied for user 'root'@'localhost' (using password: YES)'
+
+现在终于被我找到了解决方法，如下：
+-----------------------------------------------------------------------
+# /etc/init.d/mysql stop
+# mysqld_safe --user=mysql --skip-grant-tables --skip-networking &
+# mysql -u root mysql
+mysql> UPDATE user SET Password=PASSWORD('newpassword') where USER='root';
+mysql> FLUSH PRIVILEGES;
+mysql> quit
+--------------------------------------------------------------------------
+9、下载安装hive2.x
+10、cp hive-env.sh.template hive-env.sh
+vim hive-env.sh
+添加：
+---------------------------------------------------
+export JAVA_HOME=/usr/java/jdk1.7.0_79
+export HIVE_HOME=/opt/hive-2.1.1
+export HIVE_CONF_DIR=/opt/hive-2.1.1/conf
+export HIVE_AUX_JARS_PATH=/opt/hive-2.1.1/lib
+export HADOOP_HOME=/opt/hadoop-2.6.0
+----------------------------------------------------
+11、cp hive-default.xml.template hive-site.xml
+vim hive-site.xml
+修改一下内容：
+-------------------------------------------------------------------------------------------------------
+<property>  
+  <name>hive.exec.local.scratchdir</name>  
+  <value>/opt/hive-2.1.1/tmp/</value>  
+  <description>Local scratch space for Hive jobs</description>  
+</property>  
+
+<property>  
+  <name>hive.downloaded.resources.dir</name>  
+  <value>/opt/hive-2.1.1/tmp/${hive.session.id}_resources</value>  
+  <description>Temporary local directory for added resources in the remote file system.</description>  
+</property>  
+
+<property>  
+  <name>hive.querylog.location</name>  
+  <value>/opt/hive-2.1.1/tmp/</value>  
+  <description>Location of Hive run time structured log file</description>  
+</property>  
+
+<property>  
+  <name>hive.server2.logging.operation.log.location</name>  
+  <value>/opt/hive-2.1.1/tmp/root/operation_logs</value>  
+  <description>Top level directory where operation logs are stored if logging functionality is enabled</description>  
+</property>  
+<property>  
+    <name>javax.jdo.option.ConnectionDriverName</name>  
+    <value>com.mysql.jdbc.Driver</value>  
+    <description>Driver class name for a JDBC metastore</description>
+ </property>  
+      <name>javax.jdo.option.ConnectionURL</name>  
+      <value>jdbc:mysql://localhost:3306/hive?createDatabaseIfNotExist=true</value>  
+ <property>  
+    <name>javax.jdo.option.ConnectionUserName</name>  
+    <value>root</value>  
+    <description>Username to use against metastore database</description>  
+  </property>  
+ <property>  
+    <name>javax.jdo.option.ConnectionPassword</name>  
+    <value>root</value>  
+    <description>password to use against metastore database</description>  
+  </property>
+------------------------------------------------------------------------------------------------------------------------
+12、将MySQL驱动包添加到Hive的lib目录下：mysql-connector-java-5.1.38-bin.jar
+13、在mysql执行
+mysql> SOURCE /home/lzy/software/hive-2.1.1/scripts/metastore/upgrade/mysql/hive-schema-2.1.0.mysql.sql
+14、测试
+hive2.x/bin/schematool -initSchema -dbType mysql
+显示：
+----------------------------------------------------------------------------------------------------------------
+[lzy@lzy01 bin]$ schematool -initSchema -dbType mysql
+which: no hbase in (/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/home/lzy/bin::/home/lzy/software/jdk-1.8.0//bin)
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/home/lzy/software/hive-2.1.1/lib/log4j-slf4j-impl-2.4.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/home/lzy/software/hadoop-2.7.2/share/hadoop/common/lib/slf4j-log4j12-1.7.10.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
+Metastore connection URL:	 jdbc:mysql://192.168.234.134:3306/hivedb?createDatabaseIfNotExist=true
+Metastore Connection Driver :	 com.mysql.jdbc.Driver
+Metastore connection User:	 hive1
+Starting metastore schema initialization to 2.1.0
+Initialization script hive-schema-2.1.0.mysql.sql
+Initialization script completed
+--------------------------------------------------------------------------------------------------------
+15、进入hive-shell： 
+bin/hive
+
+
+
+错误：说明这个mysql的hive库里有东西，
+----------------------------------------------------------------------------------------------------------
+[lzy@lzy01 bin]$ schematool -initSchema -dbType mysql
+which: no hbase in (/usr/lib64/qt-3.3/bin:/usr/local/bin:/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/sbin:/home/lzy/bin::/home/lzy/software/jdk-1.8.0//bin)
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/home/lzy/software/hive-2.1.1/lib/log4j-slf4j-impl-2.4.1.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/home/lzy/software/hadoop-2.7.2/share/hadoop/common/lib/slf4j-log4j12-1.7.10.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
+Metastore connection URL:	 jdbc:mysql://192.168.234.134:3306/hive?createDatabaseIfNotExist=true
+Metastore Connection Driver :	 com.mysql.jdbc.Driver
+Metastore connection User:	 root
+Starting metastore schema initialization to 2.1.0
+Initialization script hive-schema-2.1.0.mysql.sql
+Error: Duplicate key name 'PCS_STATS_IDX' (state=42000,code=1061)
+org.apache.hadoop.hive.metastore.HiveMetaException: Schema initialization FAILED! Metastore state would be inconsistent !!
+Underlying cause: java.io.IOException : Schema script failed, errorcode 2
+Use --verbose for detailed stacktrace.
+*** schemaTool failed ***
+-----------------------------------------------------------------------------------------------------------------------------------------
+解决方式：
+1、进入mysql
+mysql -uroot -proot
+2、创建库
+create database hivedb;
+3、修改hive-site.xml
+</property>  
+      <name>javax.jdo.option.ConnectionURL</name>  
+      <value>jdbc:mysql://localhost:3306/hivedb?createDatabaseIfNotExist=true</value>  
+ <property> 
+
+
+
+

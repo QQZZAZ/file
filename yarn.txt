@@ -1,0 +1,2 @@
+yarn application -kill application_1558944964464_4567  //杀死
+yarn logs -applicationId    //程序运行完成之后查看yarn日志 

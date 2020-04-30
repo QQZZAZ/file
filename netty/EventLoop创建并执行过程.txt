@@ -1,0 +1,28 @@
+第一阶段：创建阶段
+1、 NioEventLoopGroup构造方沍Threadfactory创建、每个一个线程独立名字默认创建cPU核数←2（ Runt ime. getRuntime（）。 availableprocessors（）*2）
+每个线程会有一个独立的名字 ThreadPerTas executor Thread
+2、 newchi1d（）方法给每一个 Eventloop创建一个队列tai1 Tasks newMpscQueue（无锁化串行队列）
+3、会被放入到线程队列里面去 MpscQueue（线程池内部的执行队列）
+4、 newchooser（）获取一个线程（封装成了 Eventloop对象）
+执行阶段调用 EventLoop. exectue（）
+位运算比取余运算效率更高 
+
+第二阶段：执行阶段
+无锁化串行的执行流程（安全）
+1、bind（）
+2、调用 Eventloop的 execute（）方法
+inEventloop（）现在拿到的这个 Eventloop是不是 Netty己创建的线程每一个线程任务，一定是 Netty创建的（保证线程的安全性）
+3、 selector关联，轮询所有的事件
+//封装 SelectionKey的方法JDK的 Selector存在Bug、空轮询Bug
+//有可能导致cPU达到100%
+select（）方法， Netty空轮训计数器，默认是512
+rebuildselector 
+key.cancel（）
+//轮询的方法processSelectedKeys（）方法
+关于 Selector，在 Netty把 Hashset直接替换成了Array省去了繁杂的操作
+
+第三阶段：客户端的接入
+doReadMessage（）方法
+pipeline.fireChannelRead（
+Channelhandler.channelRead（
+unsafe.read()

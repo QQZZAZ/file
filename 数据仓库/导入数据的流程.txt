@@ -1,0 +1,2 @@
+sqoop负责导入mysql数据到大数据hdfs
+从hdfs目录load倒ods层

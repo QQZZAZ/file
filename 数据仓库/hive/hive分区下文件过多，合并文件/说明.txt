@@ -1,0 +1,10 @@
+通过sparksql向hive的二级分区下写文件，默认都少个partition就会生成多少份文件
+这个时候如果repartition（1），严重降低spark的写入速度。
+这时需要使用hive的命令合并这些小文件，合并的过程相当于开启一个mr任务，
+根据map数决定最后的文件数
+
+
+insert overwrite xxx select * from yyy distribute by k1,k2 sort by k3 
+可以在计算过程中不改变partition的数量，
+降低小文件的数量，能缓解一下，
+但是根治不了，并行度和小文件 两者暂时没有特别好的办法

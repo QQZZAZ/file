@@ -1,0 +1,14 @@
+统计某些sq1的执行频率，写脚本过滤一些sq1
+slow_query_log_=1/0
+long_query_time=1 2 3负责记录慢日志的阀值
+log_queries_not_using_indexes：记录没有用索引的查询
+log_throttle__queries_not__using_indexes：#设定每分钟记录到日志的未使用索引的语句数目，超过这个数目后只记录语句数量和花费的总时间
+min_examined_row1imit：要检查的行数大于等于N时才记录为慢查询，前提是必须满足1ong_query_time和long_querise_not_using_indexes约束
+1og_s1ow_admin_statements；管理语句是否记录
+log_s1ow_s1ave_statements：从库的语句执行是否记录
+
+统计用时最长的10条sq1
+mysqldumpslow -s t -t 10 mysql-slow log执行频率最高的10条sq1
+mysqldumpslow -s c -t 10 mysql-slow log
+分析慢日志工具
+mysqldumpslow

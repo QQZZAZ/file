@@ -1,0 +1,113 @@
+docker 镜像下载
+docker pull mirrorgooglecontainers/kube-apiserver-amd64:v1.16.0
+docker pull mirrorgooglecontainers/kube-controller-manager-amd64:v1.16.0
+docker pull mirrorgooglecontainers/kube-scheduler-amd64:v1.16.0
+docker pull mirrorgooglecontainers/kube-proxy-amd64:v1.16.0
+docker pull mirrorgooglecontainers/pause:3.1
+docker pull mirrorgooglecontainers/etcd-amd64:3.3.15-0
+docker pull coredns/coredns:1.6.2
+ 
+ 
+docker tag mirrorgooglecontainers/kube-controller-manager-amd64:v1.16.0 k8s.gcr.io/kube-controller-manager:v1.16.0
+docker tag mirrorgooglecontainers/kube-scheduler-amd64:v1.16.0 k8s.gcr.io/kube-scheduler:v1.16.0
+docker tag mirrorgooglecontainers/kube-apiserver-amd64:v1.16.0 k8s.gcr.io/kube-apiserver:v1.16.0
+docker tag mirrorgooglecontainers/kube-proxy-amd64:v1.16.0 k8s.gcr.io/kube-proxy:v1.16.0
+docker tag mirrorgooglecontainers/pause:3.1 k8s.gcr.io/pause:3.1
+docker tag mirrorgooglecontainers/etcd-amd64:3.3.15-0 k8s.gcr.io/etcd:3.3.15-0
+docker tag coredns/coredns:1.6.2 k8s.gcr.io/coredns:1.6.2
+ 
+#删除不需要的镜像
+docker rmi mirrorgooglecontainers/kube-apiserver-amd64:v1.16.0
+docker rmi mirrorgooglecontainers/kube-controller-manager-amd64:v1.16.0
+docker rmi mirrorgooglecontainers/kube-scheduler-amd64:v1.16.0
+docker rmi mirrorgooglecontainers/kube-proxy-amd64:v1.16.0
+docker rmi mirrorgooglecontainers/pause:3.1
+docker rmi mirrorgooglecontainers/etcd-amd64:3.3.15-0
+# 查看
+docker images
+
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
+[kubernetes]
+name=Kubernetes
+baseurl=http://mirrors.aliyun.com/kubernetes/yum/repos/kubernetes-el7-x86_64
+enabled=1
+gpgcheck=0
+repo_gpgcheck=0
+gpgkey=http://mirrors.aliyun.com/kubernetes/yum/doc/yum-key.gpg
+       http://mirrors.aliyun.com/kubernetes/yum/doc/rpm-package-key.gpg
+EOF
+
+
+kubeadm init \
+   --kubernetes-version=v1.16.0 \
+   --pod-network-cidr=10.244.0.0/16 \
+   --apiserver-advertise-address=192.168.125.110 \
+   --ignore-preflight-errors=Swap
+
+kubeadm join 192.168.125.110:6443 --token w54rku.xoi79j6skn9b1ezb --discovery-token-ca-cert-hash sha256:46511888e3cfbbb6b7c7af2a9047b4cf98657e7f4746f441f423c40f7f30f960 --ignore-preflight-errors=Swap
+
+echo "export KUBECONFIG=/etc/kubernetes/admin.conf" >> ~/.bash_profile
+
+
+报错：The connection to the server localhost:8080 was refused - did you specify the right host or port?
+//需要将主节点（master节点）中的【/etc/kubernetes/admin.conf】文件拷贝到从节点相同目录下
+//网上的安装步骤没有这一步，报错了
+
+
+
+
+kubectl apply -f kubernetes-dashboard.yaml
+ 
+# 查看dashboard 信息，Running 说明正常
+kubectl get pods -n kube-system
+  ### kubernetes-dashboard-79ff88449c-fpxrh   1/1     Running   0          17h
+ 
+#创建 serviceaccount 用于登录 dashboard
+kubectl create serviceaccount dashboard-admin -n kube-system
+ 
+#创建clusterrolebinding
+kubectl create clusterrolebinding cluster-dashboard-admin --clusterrole=cluster-admin --serviceaccount=kube-system:dashboard-admin
+ 
+#将dashboard的service 的类型改成NodePort  ，也可以在部署dashboard的时候修改下yaml文件
+kubectl patch svc kubernetes-dashboard -p '{"spec":{"type":"NodePort"}}' -n kube-system
+ 
+#查看secret 的具体名字 dashboard-admin-token-xxxxx
+kubectl get secret -n kube-system
+### 找到下面这一行 dashboard-admin-token-xxxxx
+### dashboard-admin-token-9rj88                      kubernetes.io/service-account-token   3      17h
+ 
+ 
+# 查看 token 信息
+kubectl describe secret dashboard-admin-token-9rj88 -n kube-system
+
+
+//安装Flannel遇见子节点无法连接，重启docker之后过了一段时间连上了，原因未知
+#配置dashboard 阿里云镜像，官网下载不了
+docker pull registry.cn-hangzhou.aliyuncs.com/google_containers/kubernetes-dashboard-amd64:v1.10.1
+docker tag registry.cn-hangzhou.aliyuncs.com/google_containers/kubernetes-dashboard-amd64:v1.10.1 k8s.gcr.io/kubernetes-dashboard-amd64:v1.10.1
+docker rmi  registry.cn-hangzhou.aliyuncs.com/google_containers/kubernetes-dashboard-amd64:v1.10.1
+
+
+wget https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+
+#创建 serviceaccount 用于登录 dashboard
+kubectl create serviceaccount dashboard-admin -n kube-system
+ 
+#创建clusterrolebinding
+kubectl create clusterrolebinding cluster-dashboard-admin --clusterrole=cluster-admin --serviceaccount=kube-system:dashboard-admin
+ 
+#将dashboard的service 的类型改成NodePort  ，也可以在部署dashboard的时候修改下yaml文件
+kubectl patch svc kubernetes-dashboard -p '{"spec":{"type":"NodePort"}}' -n kube-system
+ 
+#查看secret 的具体名字 dashboard-admin-token-xxxxx
+kubectl get secret -n kube-system
+### 找到下面这一行 dashboard-admin-token-xxxxx
+### dashboard-admin-token-9rj88                      kubernetes.io/service-account-token   3      17h
+ 
+ 
+# 查看 token 信息
+kubectl describe secret dashboard-admin-token-bnmxj -n kube-system
+ 
+
+
+eyJhbGciOiJSUzI1NiIsImtpZCI6IndxallhYldDVzdvNjRPdzNnbS1DSDgxWVZCcDRadnYydFY4a0xjaE5UUDgifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJrdWJlLXN5c3RlbSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VjcmV0Lm5hbWUiOiJuYW1lc3BhY2UtY29udHJvbGxlci10b2tlbi10Y2IycSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJuYW1lc3BhY2UtY29udHJvbGxlciIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6IjEyOGEwMTBiLTNmZjMtNDdjYS04MDZhLWY2YTM2NDE4MmY4YyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDprdWJlLXN5c3RlbTpuYW1lc3BhY2UtY29udHJvbGxlciJ9.R8V9E_2lYjYqaeYlCn2RykyTK8r8HWK58ibam1t_YbpE83nkS4VCyOy6H_A2KneYfDXPVn0DmnqRmc2J_3YF8o8EvoRQeg8ojYksf9fPT02qYT2Q7lD5fDyuwWYKcpMthic2jC-1TK6FM4cuoFERIMZgokr7GRNszgEZc3Z-HAq64A4zbAVoxe_HZCTamEm5snfsnsjF7ugSltlx9g-kvosBVvzaeognQkq7t4sBiW4CrvZCdsA62Sk0mN5IUpwodXJ5qqkQitY-9-2OebiQxEh2VRPB_Z4bVrhyLUQ7KSoGVtBE9VQ8LnwlklRtiFAovYSrkmO-Tlcxp4ZaEPsZlg

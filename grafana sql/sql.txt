@@ -1,0 +1,10 @@
+SELECT
+  time AS "time",
+  application_name AS metric,
+  heap_number
+FROM application_executor_heap_table
+WHERE
+  $__unixEpochFilter(time) 
+and
+  spider_log_send_ip = '192.168.129.11'
+ORDER BY time

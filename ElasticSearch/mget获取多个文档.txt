@@ -1,0 +1,6 @@
+6.Mget获取多个文档
+·介绍 Multi GET API
+为了更快更迅速的同时检索多个文档
+mget AP参数是一个docs数组，数组的每个节点定义一个文档的_ index、_type、_id元数据。
+官方文档:
+https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-multi-get.html#docs-multi-get

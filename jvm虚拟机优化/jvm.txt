@@ -1,0 +1,142 @@
+Java堆空间被划分成了两块空间，一个是年轻代，一个是老年代。年轻代放的是短时间存活的对象，老年代放的是长时间存活的对象。
+年轻代又被划分了三块空间，Eden、Survivor1、Survivor2。
+
+首先，Eden区域和Survivor1区域用于存放对象，Survivor2区域备用。创建的对象，首先放入Eden区域和Survivor1区域，如果Eden区域满了，
+那么就会触发一次Minor GC，进行年轻代的垃圾回收。Eden和Survivor1区域中存活的对象，会被移动到Survivor2区域中。然后Survivor1和Survivor2的角色调换，
+Survivor1变成了备用。
+
+如果一个对象，在年轻代中，撑过了多次垃圾回收，都没有被回收掉，那么会被认为是长时间存活的，此时就会被移入老年代。
+此外，如果在将Eden和Survivor1中的存活对象，尝试放入Survivor2中时，发现Survivor2放满了，那么会直接放入老年代。此时就出现了，短时间存活的对象，进入老年代的问题。
+
+如果老年代的空间满了，那么就会触发Full GC，进行老年代的垃圾回收操作。
+
+Spark中，垃圾回收调优的目标就是，只有真正长时间存活的对象，才能进入老年代，短时间存活的对象，只能呆在年轻代。不能因为某个Survivor区域空间不够，
+在Minor GC时，就进入了老年代。从而造成短时间存活的对象，长期呆在老年代中占据了空间，而且Full GC时要回收大量的短时间存活的对象，导致Full GC速度缓慢。
+
+如果发现，在task执行期间，大量full gc发生了，那么说明，年轻代的Eden区域，给的空间不够大。此时可以执行一些操作来优化垃圾回收行为：
+1、包括降低spark.storage.memoryFraction的比例，给年轻代更多的空间，来存放短时间存活的对象；
+2、给Eden区域分配更大的空间，使用-Xmn即可，通常建议给Eden区域，预计大小的4/3；
+3、如果使用的是HDFS文件，那么很好估计Eden区域大小，如果每个executor有4个task，然后每个hdfs压缩块解压缩后大小是3倍，此外每个hdfs块的大小是64M，
+那么Eden区域的预计大小就是：4 * 3 * 64MB，然后呢，再通过-Xmn参数，将Eden区域大小设置为4 * 3 * 64 * 4/3。
+
+
+-XX:SurvivorRatio=4：如果值为4，那么就是两个Survivor跟Eden的比例是2:4，也就是说每个Survivor占据的年轻代的比例是1/6，所以，你其实也可以尝试调大Survivor区域的大小。
+-XX:NewRatio=4：调节新生代和老年代的比例
+jmap -histo [进程id] | head -20 > jmap.txt 确认是Full GC问题，那就只能看堆内存了 查看前20个最多的对象
+jmap -heap [进程id] 查看java程序的内存分配情况和当时的使用情况
+
+
+CPU占用过高问题定位
+2.1、定位问题进程
+使用top命令查看资源占用情况，发现pid为14063的进程占用了大量的CPU资源，CPU占用率高达776.1%，内存占用率也达到了29.8%
+使用jstack分析java程序cpu占用率过高的问题
+1，使用jps查找出java进程的pid，如3707
+2，使用top -p 14292 -H观察该进程中所有线程的CPU占用。假设线程14065较高
+printf "%x\n" 14065 //挑选TID为14065的线程，查看该线程的堆栈情况，先将线程id转为16进制，使用printf "%x\n" tid命令进行转换
+36f1 //得到线程数
+jstack 14063 |grep 36f1 -A 30  //再使用jstack命令打印线程堆栈信息，命令格式：jstack pid |grep tid -A 30
+jstat -gcutil 14063 2000 10使用jstat -gcutil命令每隔2秒查看进程的内存情况 
+
+到底是谁杀掉了这个进程？
+使用nohup strace -T -tt -e trace=all -p 21715 > trace.log &监控该pid的情况，如果是被kill -9，会出现一个log
+
+
+-Xms 初始堆大小。如：-Xms256m
+-Xmx 最大堆大小。如：-Xmx512m
+-Xmn 新生代大小。通常为 Xmx 的 1/3 或 1/4。新生代 = Eden + 2 个 Survivor 空间。实际可用空间为 = Eden + 1 个 Survivor，即 90% 
+-Xss JDK1.5+ 每个线程堆栈大小为 1M，一般来说如果栈不是很深的话， 1M 是绝对够用了的。
+-XX:NewRatio 新生代与老年代的比例，如 –XX:NewRatio=2，则新生代占整个堆空间的1/3，老年代占2/3
+-XX:SurvivorRatio 新生代中 Eden 与 Survivor 的比值。默认值为 8。即 Eden 占新生代空间的 8/10，另外两个 Survivor 各占 1/10 
+-XX:PermSize 永久代(方法区)的初始大小
+-XX:MaxPermSize 永久代(方法区)的最大值
+-XX:+PrintGCDetails 打印 GC 信息
+-XX:+HeapDumpOnOutOfMemoryError 让虚拟机在发生内存溢出时 Dump 出当前的内存堆转储快照，以便分析用
+
+注意：
+如果想设置老生代大小需要同时声明-Xmx -Xms -Xmn 	 Xmx - Xmn - PermSize = 老年代
+
+jvm垃圾回收机制算法G1和CMS
+CMS （Concurent mark sweep）并发标记清除
+步骤：
+初始标记
+并发标记
+重新标记
+并发清除
+特点：并发收集、低停顿
+问题
+CPU敏感、浮动垃圾、碎片
+G1（Garbage first）垃圾优先
+WechatIMG5.jpeg
+不同于其他的分代回收算法、G1将堆空间划分成了互相独立的区块。每块区域既有可能属于O区、也有可能是Y区，且每类区域空间可以是不连续的（对比CMS的O区和Y区都必须是连续的）。
+这种将O区划分成多块的理念源于：当并发后台线程寻找可回收的对象时、有些区块包含可回收的对象要比其他区块多很多。虽然在清理这些区块时G1仍然需要暂停应用线程、
+但可以用相对较少的时间优先回收包含垃圾最多区块。这也是为什么G1命名为Garbage First的原因：第一时间处理垃圾最多的区块。
+
+G1相比CMS
+G1在压缩空间方面有优势
+G1通过将内存空间分成区域（Region）的方式避免内存碎片问题
+Eden, Survivor, Old区不再固定、在内存使用效率上来说更灵活
+G1可以通过设置预期停顿时间（Pause Time）来控制垃圾收集时间避免应用雪崩现象
+G1在回收内存后会马上同时做合并空闲内存的工作、而CMS默认是在STW（stop the world）的时候做
+G1会在Young GC中使用、而CMS只能在O区使用
+G1适合的场景
+服务端多核CPU、JVM内存占用较大的应用（至少大于4G）
+应用在运行过程中会产生大量内存碎片、需要经常压缩空间
+想要更可控、可预期的GC停顿周期；防止高并发下应用雪崩现象
+G1的四种回收操作方式
+YGC（不同于CMS）
+并发阶段
+混合模式
+full GC （一般是G1出现问题时发生）
+就目前而言、CMS还是默认首选的GC策略
+WechatIMG6.jpeg
+图中每个小区块都代表G1的一个区域（Region），区块里面的字母代表不同的分代内存空间类型（如[E]Eden,[O]Old,[S]Survivor）空白的区块不属于任何一个分区；
+G1可以在需要的时候任意指定这个区域属于Eden或是O区之类的。
+G1 YoungGC在Eden充满时触发，在回收之后所有之前属于Eden的区块全变成空白。然后至少有一个区块是属于S区的（如图半满的那个区域），同时可能有一些数据移到了O区。
+
+WechatIMG7.jpeg
+Young区发生了变化、这意味着在G1并发阶段内至少发生了一次YGC（这点和CMS就有区别），Eden在标记之前已经被完全清空，因为在并发阶段应用线程同时在工作、所以可以看到Eden又有新的占用
+一些区域被X标记，这些区域属于O区，此时仍然有数据存放、不同之处在G1已标记出这些区域包含的垃圾最多、也就是回收收益最高的区域
+在并发阶段完成之后实际上O区的容量变得更大了（O+X的方块）。这时因为这个过程中发生了YGC有新的对象进入所致。此外，这个阶段在O区没有回收任何对象：它的作用主要是标记出垃圾最多的区块出来。
+对象实际上是在后面的阶段真正开始被回收.
+WechatIMG8.jpeg
+像普通的YGC那样、G1完全清空掉Eden同时调整survivor区。另外，两个标记也被回收了，他们有个共同的特点是包含最多可回收的对象，因此这两个区域绝对部分空间都被释放了。
+这两个区域任何存活的对象都被移到了其他区域（和YGC存活对象晋升到O区类似）。这就是为什么G1的堆比CMS内存碎片要少很多的原因–移动这些对象的同时也就是在压缩对内存。
+
+混合GC阶段会有survivor区的对象晋升到O区；另外，每次混合GC只是清理一部分的O区内存，整个GC会一直持续到几乎所有的标记区域垃圾对象都被回收，这个阶段完了之后G1会重新回到正常的YGC阶段。
+周期性的，当O区内存占用达到一定数量之后G1又会开启一次新的并行GC阶段.
+
+spark实时业务内存消耗一般在4GB以下，CMS是需要配合一个年轻代的标记清除ParNew收集器的组合回收机制会比G1更好用
+-XX:+UseParNewGC -XX:+UseConcMarkSweepGC
+-XX:+UseParNewGC开启parnewe回收器，新生代垃圾收集器
+-XX:ParallelGCThreads---指定parnew回收器的线程数，一般和spark分配的CPU核数相当，否则过多会影响计算机的性能。
+1、启用CMS：-XX:+UseConcMarkSweepGC。
+2。CMS默认启动的回收线程数目是 (ParallelGCThreads + 3)/4) ，如果你需要明确设定，可以通过-XX:ParallelCMSThreads=20来设定,其中ParallelGCThreads是年轻代的并行收集线程数
+3、CMS是不会整理堆碎片的，因此为了防止堆碎片引起full gc，通过会开启CMS阶段进行合并碎片选项：-XX:+UseCMSCompactAtFullCollection，开启这个选项一定程度上会影响性能，
+阿宝的blog里说也许可以通过配置适当的CMSFullGCsBeforeCompaction来调整性能，未实践。
+4.为了减少第二次暂停的时间，开启并行remark: -XX:+CMSParallelRemarkEnabled。如果remark还是过长的话，可以开启-XX:+CMSScavengeBeforeRemark选项，强制remark之前开始一次minor gc，
+减少remark的暂停时间，但是在remark之后也将立即开始又一次minor gc。
+5.为了避免Perm区满引起的full gc，建议开启CMS回收Perm区选项：
++CMSPermGenSweepingEnabled -XX:+CMSClassUnloadingEnabled
+6.默认CMS是在tenured generation沾满68%的时候开始进行CMS收集，如果你的年老代增长不是那么快，并且希望降低CMS次数的话，可以适当调高此值：
+-XX:CMSInitiatingOccupancyFraction=80
+这里修改成80%沾满的时候才开始CMS回收。
+7.年轻代的并行收集线程数默认是(cpu <= 8) ? cpu : 3 + ((cpu * 5) / 8)，如果你希望降低这个线程数，可以通过-XX:ParallelGCThreads= N 来调整。
+-XX:+UseG1GC=G1
+下面是G1的使用方式和优化的参数
+spark.executor.extraJavaOptions=-XX:+UseG1GC=G1 -XX:MaxGCPauseMillis=100 -XX:G1HeapRegionSize=16m -XX:MaxTenuringThreshold=7 
+-XX:InitiatingHeapOccupancyPercent=65 -XX:+UnlockExperimentalVMOptions
+
+
+
+GC Root
+常说的GC(Garbage Collector) roots，特指的是垃圾收集器（Garbage Collector）的对象，GC会收集那些不是GC roots且没有被GC roots引用的对象。
+一个对象可以属于多个root，GC root有几下种：
+Class - 由系统类加载器(system class loader)加载的对象，这些类是不能够被回收的，他们可以以静态字段的方式保存持有其它对象。我们需要注意的一点就是，通过用户自定义的类加载器加载的类，
+除非相应的java.lang.Class实例以其它的某种（或多种）方式成为roots，否则它们并不是roots，.
+Thread - 活着的线程
+Stack Local - Java方法的local变量或参数
+JNI Local - JNI方法的local变量或参数
+JNI Global - 全局JNI引用
+Monitor Used - 用于同步的监控对象
+Held by JVM - 用于JVM特殊目的由GC保留的对象，但实际上这个与JVM的实现是有关的。可能已知的一些类型是：系统类加载器、一些JVM知道的重要的异常类、
+一些用于处理异常的预分配对象以及一些自定义的类加载器等。然而，JVM并没有为这些对象提供其它的信息，因此需要去确定哪些是属于"JVM持有"的了。

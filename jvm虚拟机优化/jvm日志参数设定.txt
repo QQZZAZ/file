@@ -1,0 +1,7 @@
+-Xloggc:/opt/xxx/logs/xxx-xxx-gc-%t.log -XX:+UseGCLogFileRotation -XX:NumberOfGCLogFiles=5 
+-XX:GCLogFileSize=20M -XX:PrintGCDetails -XX:+PrintGCDateStamps -XX:+PrintGCCause
+
++UseGCLogFileRotation 滚动日志
+XX:NumberOfGCLogFiles=5 设定5个log文件
+XX:GCLogFileSize=20M 每个文件20M
+如果不设定日志会无限上涨，直到程序结束

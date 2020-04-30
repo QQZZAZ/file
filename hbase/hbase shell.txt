@@ -1,0 +1,2 @@
+ scan 'WEIBO_INFO_TABLE',{COLUMN=>'wa:wb_content_keywords',LIMIT=>10}
+ create 'streamtest',{NAME => 'wa', VERSIONS => 2}

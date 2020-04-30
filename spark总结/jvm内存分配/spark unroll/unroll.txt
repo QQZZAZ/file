@@ -1,0 +1,4 @@
+unroll是未使用persist前的RDD的状态。
+1.未persist前RDD是缓存在other区域
+2.在unroll的过程中为防止内存碎片，使用了标记复制的算法，将other中的RDD数据，复制到storage区域
+3.storage区域为了保证数据在内存中的连续性，将RDD的数据转为Block，连续的Block

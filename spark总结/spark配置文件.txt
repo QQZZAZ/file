@@ -1,0 +1,1 @@
+SparkConf().set("spark.storage.memoryFraction", "0.5")  RDD内存和Task内存一半一半

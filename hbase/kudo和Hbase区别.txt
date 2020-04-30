@@ -1,0 +1,3 @@
+kudo介于hdfs和hbase 的快速更新和批量查询
+如果是随机访问官方建议使用hbase
+kudu目前无法支持ACID，批量删除更新，需要借助Spark和Impala

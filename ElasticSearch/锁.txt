@@ -1,0 +1,3 @@
+采用乐观锁机制内部版本控制和外部版本控制
+·内部版本控制：version自增长，修改数据后， version会自动加1
+ 外部版本控制：为了保持 version与外部版本控制的数值一致使用 version type= externa检查数据当前的 version值是否小于请求中的 version值

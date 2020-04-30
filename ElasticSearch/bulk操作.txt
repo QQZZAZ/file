@@ -1,0 +1,36 @@
+7.批量操作bulk介绍bulk批量操作API
+为了实现多个文档的 create、 index、 update或 delete。
+官方文档：https://www.elastic.co/guide/en/elasticsearch/reference/current/docs-bulk.html
+
+多重模式
+#批量操作bulk POST /library/books/_bulk 
+{"index"：{"id"：113}}
+{"title"："Elasticsearch:The Definitive Guide"，"price:5}
+{"index"：{"id"：21}}
+{"title"："The Elasticsearch cookbook"，"price"：15}
+{"index"：{"id"：3}}
+{"title"："Elasticsearch Blueprints"，"price"：9}
+{"index"："id"：43}
+{"title"："Thinking in Python"，"price"：22}
+{"index"：{"id"：5}}
+{"title"："Thinking in Java"，"price"：7}}
+
+
+当然还可以有de1ete, update等握作注意 delete下面没有具体的 request body 
+POST /library/books/bulk
+{"delete":{"_index":"library","_type":"books","_id":"1"}
+
+{"create":{"_index":"music","_type":"classical","_id","1"}
+{"title":"Ave Verum Corpus"} #request body 
+{"index"：{"_index"："music"，"_type"："classical"}} #request body
+{"title"："Litaniac de Venerabili Altaris sacramento"} #request body
+
+{"update"："_index"："library"，"_type"："books"， "id"："2"}}
+{"doc"：{" prce"："18"}} #request body
+
+
+7.2 bulk处理文档大小的最佳值
+1.数据加载在每个节点里的RAM里,
+2.请求的数据超过一定的大小，那buk的处理性能就会降低
+3.文档数据大小跟硬件配置，文档复杂度，以及前集群的负载有关
+

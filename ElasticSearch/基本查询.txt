@@ -1,0 +1,33 @@
+基本查询
+term, terms查询 
+#term查询：查询某字段里有某个关键词的文档
+# terms查询：查询某个字段里有多个关键词的文档
+# minimum_match：最小匹配柴：1说明两个关键词里最少有个，2就说明文档里这两个关键词都得存在
+
+from，size
+控制查询返回的数量from和sze相当于mysq1里的1imit 
+From：从哪个结果开始返回 按下标开始计算例如：1是指从返回的第2个结果开始
+s1ze：定义返回最大的结果数
+
+返回版本号_version 
+match杳询
+# match查词可接受文字，数字日期等数据类型
+# match跟term的区别是， match查询的时候，e1asticsearch会根据你给定的字段提供合适的分析器，而term直询不会有分析器分析的过程
+通过 match_a11查询指定索引下的所有文档
+通过 match phrase查询群短语查询，s1op定义的是关键词之间隔多少未知单词
+multi_match查询可以指定多个字段比如查询tit1e和preview这两个字段里部包含 Elasticsearch关词的文档
+GET /1ibrary/books/searc 
+{"query"：
+  {"multi_match"：
+    query"："Elasticsearc",
+	fields"：["title"，"preview"]
+  }
+}
+
+
+升序降序
+prefⅸx前缀匹配查询
+range范围查询
+wildcard通配符查询
+fuZzy模糊查询
+more_like_this & more_like_this_field查询

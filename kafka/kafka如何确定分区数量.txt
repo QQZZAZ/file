@@ -1,0 +1,11 @@
+如何确定分区数量呢
+可以遵循一定的步骤来尝试确定分区数：创建一个只有1个分区的topic，然后测试这个topic的producer吞吐量和consumer吞吐量。
+假设它们的值分别是Tp和Tc，单位可以是MB/s。然后假设总的目标吞吐量是Tt，那么分区数 = Tt / max(Tp, Tc)
+
+说明：Tp表示producer的吞吐量。测试producer通常是很容易的，因为它的逻辑非常简单，就是直接发送消息到Kafka就好了。
+Tc表示consumer的吞吐量。测试Tc通常与应用的关系更大， 因为Tc的值取决于你拿到消息之后执行什么操作，因此Tc的测试通常也要麻烦一些。
+
+生产环境如何调整topic的分区数：
+kafkamanager能监控p端和c端的消费的实际情况
+根据测试脚本得到kafkaproducer和consumer的最大吞吐量，
+然后估算期望的最大吞吐量计算应该区分的分区数

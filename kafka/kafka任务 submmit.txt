@@ -1,0 +1,2 @@
+--packages org.apache.spark:spark-sql-kafka-0-10_2.11:2.2.0 \ 
+必须配置这个，否则会报错

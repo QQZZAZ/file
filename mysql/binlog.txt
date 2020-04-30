@@ -1,0 +1,101 @@
+#mysql内将binlog存储格式改为mix ，混合模式,但是大数据采集工具Canal，建议使用row模式
+set global binlog_format='mix'
+#定期清理binlog
+set global expire_log_days=3
+#大批量导入数据导mysql，可以关闭binlog，提高写入效率
+show variables like '%sql%'
+#开启或关闭binlog日志，0关闭，1开启；ON/OFF也可以
+set log_bin='ON'
+或者sql_log_bin=1/0
+#全局关闭
+set global sql_log_bin='0'
+//仅关闭当前session的行为
+set sql_log_bin='0'
+
+binlog_do_db此参数表示只记录指定数据库的二进制日志
+binlog_ignore_db此参数表示不记录指定的数据库的二进制日志
+
+mysq1二进制日志mysql-binlog记录所有的mysq1的变化情况（不包括 select show等查询语句）
+早期那版本默认关闭，新版本默认开启
+log_bin=/home/mysq13306/mysq13306/mysql-bin
+
+binlog生成方式
+1.mysq1在启动时候，会生成新的bin1og
+2.mysql执行flush logs
+3.当达到单个bin1og文件的阀值的时候，单个bin1og文件的阀值的时候max_binlog_size =1073741824
+如果update了1000w条数据，为了事务的完整性，bin1og要等事务执行完成后切换，所以bin1og可能大于1GB
+
+binlog_cache_size内存分配，线程级别的内存分配，要给每一个线程单独的分配 binlog cache
+总内存 binlog_cache_size=线程数max_binlog_cache_size所有的 binlog_cache_size总和不超过该值
+一旦超过则报Multi-statement transaction required more than 'max binlog cache size' bytes of storage
+
+双1配置，双一配置对系统的压力很大，酌情使用，新版本8.0以后会优化的更好一些
+innodb_flush_log_at_trx_commit 
+sync_binlog同步 
+0 binlog每1s落盘一次
+1 每次 commit落盘一次
+n 每n个事务落盘一次
+
+#查看row格式的binlog日志
+mysqlbinlog my sql-bin.000001 -vv >/tmp/all.bin 
+mysqlbinlog mysql-bin.000001 --base64-output=DECODE-ROws -vv >/tmp/all bin
+
+mysq1bin1og使用方法截取ps点范围或者时间范围的bin1og 
+start-datetime 
+stop-datetime 
+start-position 
+stop-position
+
+
+误删除数据的恢复实验（ statement/row）row格式可以回复表内容的所有数据，不论什么时间点插入
+1. truncate table t12. reset master
+3. insert
+4. delete
+5.mysqlbinlog .. >/tmp/all.bin
+6.修改bin1og内容，屏蔽delete，truncate的DML语句
+7. mysql内部执行 source /tmp/all.bin
+
+------------------试验一--------------------------
+导入 binlog注意事项复注意。如果有多个 binlog文件想要恢复，不要一个一个恢复
+shell> mysqlbinlog binlog.000001 | mysql -u 
+shelL> mysqLbinlog binlog.000002 | mysql -u
+上面这种恢复方式是错误的，如果 binlog.000001中创建了一个临时表（ CREATE TEMPORARY TABLE）。而 binlog000002中要使用这个临时表，但是第一个线程 binlog000001在释放的时候会删除临时表，此时第二个线程bnog000002）就无法使用这个临时表了
+正确的做法如下
+shell> mysqlbinlog binlog.000001 binlog.000002 | mysql -u root -p ## 
+shell> mysqlbinlog binlog.000001 > /temp/statements.sql
+shell> mysqlbinlog binlog.000002 >> /temp/statements.sql
+或者shell> mysqLbinlog binlog.00000[1-2]>/tmp/statements.sql 
+shell> mysql -u root -p -e "source /tmp/statements.sql" 
+
+===================实验2====================
+1.有一部分历史数据没有bin1og
+（1） insert....
+2.进行正常的业务操作
+（1）insert.......
+3.到十点备份mysqldump -uroot -proot -s/tmp/mysql3306 sock --master-data=2 --single-transaction -A>/tmp/all sql master-data=2记录备份时间点的bin1og的pos点
+4.继续业务操作
+（1） insert ...14
+5.误删除数据drop/truncate/delete table test1. t1数据恢复
+------------------------数据恢复---------------------------------
+1.在恢复数据之前，把刚才的bin1og,cp走（防止新的数据，污染之前的 binlog
+2. source/tmp/a11.sq1-回复到11
+CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000001'，MASTER_LOG_POS=946
+
+start：946 stop：1803
+mysqlbinlog --start-position=946 --stop-position=1803 /home/mysq13306/mysq13306/mysql-bin.000001 -vv >/tmp/back2.bin
+
+source /tmp/back2.bin
+
+
+
+
+
+
+
+
+
+
+
+
+
+

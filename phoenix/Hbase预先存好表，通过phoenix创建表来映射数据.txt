@@ -1,0 +1,22 @@
+Hbase预先存好表，通过phoenix创建表来映射数据
+建立一个有3个column family的表
+
+create 't101', {NAME => 'f1', VERSIONS => 1}, {NAME => 'f2', VERSIONS => 1}, {NAME => 'f3', VERSIONS => 1}
+
+下面插入指定column的名字
+put 'phoenixtesttable', 'row1', 'wa:name', 'Bill'
+put 't101', 'r4', 'f2:c2', '23132'
+put 't101', 'r4', 'f3:c3', 'fdsafer'
+
+现在hbase的数据需要通过phoenix来读取
+创建表：
+create table IF NOT EXISTS "phoenixtesttable" ( Rowkey varchar(50) not null primary key, "wa"."name" varchar(20));
+
+select * from "t101"
+
+在phoenix中对大小写是敏感的，所以为了避免意外，在创建表、插入数据、查询等sql语句中，需要将表名、列族名、字段名均加上双引号，数值加上单引号
+
+在 phoenix中创建映射表，因为hbase是列是变化，下次需要改表表结构的话，要是将phoenix的表删除，会将hbase的表和数据都删除。。
+
+这样，我们可以建视图的方式，防止删除不会对habse的数据有变动
+CREATE VIEW "t101" ( Rowkey VARCHAR PRIMARY KEY,"f1"."c1" varchar ,"f2"."c2" varchar,"f3"."c3" varchar)

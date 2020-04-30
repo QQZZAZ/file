@@ -1,0 +1,21 @@
+#单模式下索引的创建，更新以及删除作初始化素引创建素引之前
+可以对素引做初始化操作比如指定 
+shards数量以及 replicas的数量
+Put http://192.168.1.10:9200/1ibrary/ 
+{"settings"：
+   {"index":
+      {"number of shards":5，
+	   "number of replicas":1
+	  }
+	}
+}	
+上面的 number of rep1ics还可以换成b1ocks.read.only:设为true，则当前素引只允许读，不允许写或更新
+# blocks,read：设为true，则禁止读操作
+b1ocks.write：设为true，则禁止写握作b1ocks, 
+b1ocks.metadata：设为true，则禁止对 metadata操作
+
+可以通过GET带上参数_settings可以获得该素引详细的配置信息
+GET /library/_settings
+同时获取两个索引的信息GET /library,library2/_settings
+获取所有素引的信
+GET/_all/_settings
